@@ -16,7 +16,8 @@ class StartupMenuTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.directory = Path(directory.name)
+        # The app resolves paths, and macOS's temp folder is a symlink.
+        self.directory = Path(directory.name).resolve()
         (self.directory / "default.txt").write_text("Be brief.\n", encoding="utf-8")
         self.config = parse_args(
             [

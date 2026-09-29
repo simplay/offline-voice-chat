@@ -13,7 +13,8 @@ class SystemPromptTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.directory = Path(directory.name)
+        # The app resolves paths, and macOS's temp folder is a symlink.
+        self.directory = Path(directory.name).resolve()
         self.default = self.directory / "default.txt"
         self.default.write_text("Keep answers short.\n", encoding="utf-8")
         self.arguments = [
