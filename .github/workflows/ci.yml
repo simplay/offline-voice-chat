@@ -1,0 +1,84 @@
+name: Cross-platform checks
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04, macos-15]
+        python: ['3.10', '3.12', '3.14']
+        include:
+          - os: ubuntu-26.04
+            python: '3.14'
+          - os: ubuntu-latest
+            python: '3.14'
+          - os: macos-latest
+            python: '3.14'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install test dependencies without native models
+        run: python -m pip install 'numpy>=1.26,<3' 'ruff>=0.11,<1'
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q src tests scripts
+      - run: python -m ruff check src tests scripts
+      - run: python -m ruff format --check src tests scripts
+      - run: python -m offline_voice_chat --help
+      - name: Check Bash scripts
+        if: runner.os != 'Windows'
+        run: |
+          for script in scripts/*.sh; do
+            /bin/bash -n "$script"
+          done
+      - name: Lint Bash scripts
+        if: runner.os == 'Linux'
+        run: |
+          shellcheck scripts/*.sh
+
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-latest, macos-15, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+      - name: Install without downloading model weights
+        if: runner.os != 'Windows'
+        run: bash scripts/setup.sh --skip-model-download
+      - name: Install without downloading model weights
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\setup_windows.cmd -Compute cpu -SkipModelDownload
+      - name: Check the native libraries
+        run: conda run --name offline-voice-chat python -c "import llama_cpp, moonshine_voice, sounddevice; print(sounddevice.get_portaudio_version())"
+      - name: Check the Metal build
+        if: runner.os == 'macOS'
+        run: conda run --name offline-voice-chat python -c "import llama_cpp; assert llama_cpp.llama_supports_gpu_offload()"
+      - name: Check the launcher
+        if: runner.os != 'Windows'
+        run: bash scripts/run_offline_voice_chat.sh --help
+      - name: Check the launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\run_offline_voice_chat.cmd -GpuLayers 0 --help
